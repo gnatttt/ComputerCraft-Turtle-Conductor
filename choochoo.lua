@@ -1,10 +1,16 @@
 rednet.open("left")
+term.clear()
+term.setCursorPos(1,1)
+
 --ID of the repeater turtle
 --Signals are sent to this turtle from each end turtle to be relayed
 --to the other end.
 repeater_id = 21
 --ID of the turtle at the other end the repeater will send a signal to
 send_to = "20"
+
+--Flag keeping check of whether or not the railway is being used.
+local occupied = false
 
 --If available, places a minecart on the rail in front when a redstone signal is
 --applied
@@ -14,8 +20,18 @@ send_to = "20"
 function spit_out_cart()
 	print("Waiting for signal...")
 	os.pullEvent("redstone")
-	
-	if not ping() then
+
+	--Checks if occupied, doesn't allow same turtle to be outputted twice
+	if occupied then
+		print("Railway occupied, please wait.")
+		while occupied do
+			sleep(1)
+		end
+	end
+
+	--Pings other turtle to see if it is occupied
+	if ping() then
+		print("Railway occupied, please wait.")
 		return
 	end
 
@@ -36,7 +52,7 @@ function spit_out_cart()
 		redstone.setOutput("front", false)
 		sleep(1)
 		--sends signal to repeater with msg that is the ID of turtle at other end
-		rednet.send(repeater_id, send_to)
+		rednet.send(repeater_id, send_to, "collect")
 	end
 	return
 end
@@ -55,30 +71,52 @@ function cart_search()
 	return 0
 end
 
-
+--Sends a ping to the other system and receives one back to check whether or not it is occupied
 function ping()
-	rednet.send(repeater_id, "ping20")
-	_, reply = rednet.receive()
-	if reply == "no" then
-		return false
-	else
+	print("Pinging other system...")
+	rednet.send(repeater_id, send_to, "ping")
+	_, send_to, reply = rednet.receive()
+	if string.find(reply, "yes") ~= nil then
 		return true
+	else
+		return false
 	end
 end
 
 --Waits for a rednet message from the other end and will collect cart when it arrives
 function collect_cart()
-	id, signal = rednet.receive()
-	print("System #" .. signal .. " sent a cart")
-	--Tries to collect(by attacking) something in front
-	--Will hit players crossing by, but will only get cart first
-	success = turtle.attack()
-	while not success do
-		success = turtle.attack()
+	id, sender_id, protocol = rednet.receive()
+	while protocol ~= "collect" do
+		id, sender_id, protocol = rednet.receive()
+		if protocol == "collect" then
+			print("System #" .. sender_id .. " sent a cart")
+			occupied = true
+			--Tries to collect(by attacking) something in front
+			--Will hit players crossing by, but will only get cart first
+			success = turtle.attack()
+			while not success do
+				success = turtle.attack()
+			end
+			print("Successfully collected cart from System #" .. sender_id)
+			occupied = false
+			return
+		end
 	end
-	return
 end
 
+--Third multi-thread function that listens for the ping to send back a signal of occupancy
+function listen_for_ping()
+	while true do
+		_, sender_id, protocol = rednet.receive()
+		if protocol == "ping" then
+			if occupied then
+				rednet.send(repeater_id, tonumber(sender_id), "pingyes")
+			else
+				rednet.send(repeater_id, tonumber(sender_id), "pingno")
+			end
+		end
+	end
+end
 
 function main()
 	while true do
@@ -88,7 +126,7 @@ function main()
 		--use riding at one time
 		--While this isn't as good as multiple riders, it helps with different riders
 		--colliding going up and down at the same time
-		parallel.waitForAny(spit_out_cart, collect_cart)
+		parallel.waitForAny(spit_out_cart, collect_cart, listen_for_ping)
 	end
 end
 
