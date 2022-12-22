@@ -71,7 +71,8 @@ function cart_search()
 end
 
 --Sends a ping to the other system and receives one back to check whether or not it is occupied
--- COMMENTED OUT, queue system implemented
+--COMMENTED OUT and removed usage in other functions
+--QUEUE system implemented
 
 -- function ping()
 -- 	print("Pinging other system...")
