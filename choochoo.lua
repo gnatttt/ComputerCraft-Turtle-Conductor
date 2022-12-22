@@ -7,7 +7,7 @@ term.setCursorPos(1,1)
 --to the other end.
 repeater_id = 21
 --ID of the turtle at the other end the repeater will send a signal to
-send_to = "20"
+send_to = "19"
 
 --Flag keeping check of whether or not the railway is being used.
 local occupied = false
@@ -27,12 +27,6 @@ function spit_out_cart()
 		while occupied do
 			sleep(1)
 		end
-	end
-
-	--Pings other turtle to see if it is occupied
-	if ping() then
-		print("Railway occupied, please wait.")
-		return
 	end
 
 	cart_slot = cart_search()
@@ -59,50 +53,63 @@ end
 
 --Helper method that iterates through turtle's inventory to search for an available minecart
 function cart_search()
+	total = 0
+	first_cart = 0
 	for slot = 1, 16 do
 		turtle.select(slot)
 		local item = turtle.getItemDetail()
 		if item ~= nil then
 			if string.find(item.name, "cart") ~= nil then
-				return slot
+				if first_cart == 0 then
+					first_cart = slot
+				end
+				total = total + 1
 			end
 		end
 	end
-	return 0
+	return first_cart, total
 end
 
 --Sends a ping to the other system and receives one back to check whether or not it is occupied
-function ping()
-	print("Pinging other system...")
-	rednet.send(repeater_id, send_to, "ping")
-	_, send_to, reply = rednet.receive()
-	if string.find(reply, "yes") ~= nil then
-		return true
-	else
-		return false
-	end
-end
+-- COMMENTED OUT, queue system implemented
+
+-- function ping()
+-- 	print("Pinging other system...")
+-- 	rednet.send(repeater_id, send_to, "ping")
+-- 	_, send_to, reply = rednet.receive()
+-- 	if string.find(reply, "yes") ~= nil then
+-- 		return true
+-- 	else
+-- 		return false
+-- 	end
+-- end
 
 --Waits for a rednet message from the other end and will collect cart when it arrives
 function collect_cart()
 	id, sender_id, protocol = rednet.receive()
-	while protocol ~= "collect" do
-		id, sender_id, protocol = rednet.receive()
-		if protocol == "collect" then
-			print("System #" .. sender_id .. " sent a cart")
-			occupied = true
-			--Tries to collect(by attacking) something in front
-			--Will hit players crossing by, but will only get cart first
-			success = turtle.attack()
-			while not success do
-				success = turtle.attack()
+	print("System #" .. sender_id .. " sent a cart")
+	_, total_cart = cart_search()
+	occupied = true
+	--Tries to collect(by attacking) something in front
+	--Will hit players crossing by, but will only get cart first
+	success = turtle.attack()
+	while not success do
+		sleep(.7)
+		success = turtle.attack()
+		if success then
+			_, crnt_carts = cart_search()
+			if crnt_carts > total_cart then
+				break
+			else
+				success = false
 			end
-			print("Successfully collected cart from System #" .. sender_id)
-			occupied = false
-			return
 		end
 	end
+	print("Successfully collected cart from System #" .. sender_id)
+	occupied = false
+	return
 end
+
 
 --Third multi-thread function that listens for the ping to send back a signal of occupancy
 function listen_for_ping()
